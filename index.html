@@ -1,125 +1,192 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>Buscar Placas y Teléfonos</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Base de placas y teléfonos</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
+    :root{
+      --primary:#8e24aa;
+      --primary-dark:#6a1b9a;
+      --bg:#f6f6f8;
+      --text:#2b2b2b;
+    }
+    *{box-sizing:border-box}
     body {
-      font-family: Arial, sans-serif;
-      background: #f9f9f9;
-      display: flex;
-      justify-content: center;
-      padding: 40px;
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial;
+      background: var(--bg);
+      color: var(--text);
+      display:flex;
+      justify-content:center;
+      padding:20px;
     }
     .container {
-      background: #fff;
-      padding: 30px;
-      border-radius: 10px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-      width: 600px;
+      width:100%;
+      max-width:820px;
+      background:#fff;
+      padding:20px;
+      border-radius:16px;
+      box-shadow: 0 10px 24px rgba(0,0,0,.08);
     }
     h2 {
-      margin-bottom: 20px;
-      text-align: center;
-      color: #4a148c;
+      margin:0 0 18px;
+      text-align:center;
+      color: var(--primary-dark);
     }
-    input[type="text"] {
-      padding: 10px;
-      width: 70%;
-      border: 1px solid #ccc;
-      border-radius: 5px;
+    .row {
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      justify-content:center;
+      margin-bottom:16px;
     }
-    button {
-      padding: 10px 20px;
-      margin-left: 10px;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      background: #8e24aa;
-      color: white;
-      font-weight: bold;
+    input[type="text"]{
+      flex:1 1 240px;
+      padding:12px 14px;
+      border:1px solid #d6c9db;
+      border-radius:10px;
+      outline:none;
+      transition:border .15s ease, box-shadow .15s ease;
     }
-    button:hover {
-      background: #6a1b9a;
+    input[type="text"]:focus{
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(142,36,170,.12);
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
+    .btn{
+      flex:1 1 100px;
+      padding:12px 18px;
+      border-radius:10px;
+      border:0;
+      cursor:pointer;
+      font-weight:600;
+      transition: transform .04s ease, background .15s ease;
     }
-    th, td {
-      border: 1px solid #ddd;
-      padding: 10px;
-      text-align: center;
+    .btn:active{ transform: translateY(1px) }
+    .btn-primary{ background: var(--primary); color:#fff }
+    .btn-primary:hover{ background: var(--primary-dark) }
+    .btn-ghost{
+      background:transparent;
+      color: var(--primary);
+      border:2px solid var(--primary);
     }
-    th {
-      background: #8e24aa;
-      color: white;
+    .btn-ghost:hover{ background: rgba(142,36,170,.08); }
+    .muted{ color:#777; font-size:.9rem; text-align:center; margin-top:6px }
+    table{
+      width:100%;
+      border-collapse:collapse;
+      margin-top:18px;
+      border:1px solid #eee;
     }
-    .no-results {
-      margin-top: 20px;
-      color: red;
-      text-align: center;
+    th, td{
+      border-top:1px solid #eee;
+      padding:10px 12px;
+      text-align:center;
+      word-break: break-word;
+    }
+    th{
+      background: linear-gradient(0deg, #8e24aa, #7b1fa2);
+      color:#fff;
+      position:sticky; top:0;
+    }
+    .no-results{
+      margin-top:14px;
+      color:#c62828;
+      text-align:center;
+      font-weight:600;
+    }
+    .counter{
+      text-align:right;
+      font-size:.95rem;
+      color:#5d5d5d;
+      margin-top:6px;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h2>Buscar Placas y Teléfonos</h2>
-    <div style="text-align:center; margin-bottom:20px;">
-      <input type="text" id="searchInput" placeholder="Ingrese placa o teléfono">
-      <button onclick="buscar()">Buscar</button>
+    <div class="row">
+      <input id="searchInput" type="text" placeholder="Escribe placa o teléfono…" />
+      <button class="btn btn-ghost" id="btnLimpiar">Limpiar</button>
+      <button class="btn btn-primary" id="btnBuscar">Buscar</button>
     </div>
+    <p class="muted">Fuente: Google Sheets (URL fija). Los cambios en la hoja se reflejan al recargar la página.</p>
+    <div id="counter" class="counter"></div>
     <div id="resultados"></div>
   </div>
 
-  <script>
-    const urlFija = "https://docs.google.com/spreadsheets/d/1tvoPrQ9n3uIsz003fkFEtJ8_ARl2o6ha/export?format=xlsx";
+<script>
+  // URL fija del Google Sheet (exportación a Excel)
+  const urlFija = "https://docs.google.com/spreadsheets/d/1tvoPrQ9n3uIsz003fkFEtJ8_ARl2o6ha/export?format=xlsx";
 
-    async function cargarExcel() {
-      const response = await fetch(urlFija);
-      const data = await response.arrayBuffer();
-      const workbook = XLSX.read(data, { type: "array" });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      return XLSX.utils.sheet_to_json(sheet, { header: 1 });
+  let cachedData = null; 
+  let cachedHeaders = null;
+
+  async function cargarExcel() {
+    if (cachedData) return { rows: cachedData, headers: cachedHeaders };
+    const resp = await fetch(urlFija);
+    if (!resp.ok) throw new Error("No se pudo descargar el archivo. ¿Es público el enlace?");
+    const buf = await resp.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    cachedHeaders = json[0] || [];
+    cachedData = json.slice(1) || [];
+    return { rows: cachedData, headers: cachedHeaders };
+  }
+
+  function renderTabla(headers, rows) {
+    if (!rows.length) return "<p class='no-results'>No se encontraron coincidencias</p>";
+    let html = "<table><thead><tr>";
+    headers.forEach(h => html += `<th>${h ?? ""}</th>`);
+    html += "</tr></thead><tbody>";
+    rows.forEach(r => {
+      html += "<tr>";
+      headers.forEach((_, i) => html += `<td>${(r[i] ?? "")}</td>`);
+      html += "</tr>";
+    });
+    html += "</tbody></table>";
+    return html;
+  }
+
+  async function buscar() {
+    const q = document.getElementById("searchInput").value.trim().toLowerCase();
+    const container = document.getElementById("resultados");
+    const counter = document.getElementById("counter");
+    counter.textContent = "";
+    container.innerHTML = "";
+
+    if (!q) {
+      container.innerHTML = "<p class='no-results'>Ingresa un valor para buscar</p>";
+      return;
     }
 
-    async function buscar() {
-      const query = document.getElementById("searchInput").value.trim();
-      const resultadosDiv = document.getElementById("resultados");
-      resultadosDiv.innerHTML = "";
-
-      if (!query) {
-        resultadosDiv.innerHTML = "<p class='no-results'>Ingrese un valor para buscar</p>";
-        return;
-      }
-
-      const data = await cargarExcel();
-      const headers = data[0];
-      const rows = data.slice(1);
-
-      const coincidencias = rows.filter(row => row.some(cell => String(cell).includes(query)));
-
-      if (coincidencias.length === 0) {
-        resultadosDiv.innerHTML = "<p class='no-results'>No se encontraron coincidencias</p>";
-        return;
-      }
-
-      let tabla = "<table><tr>";
-      headers.forEach(h => tabla += `<th>${h}</th>`);
-      tabla += "</tr>";
-
-      coincidencias.forEach(row => {
-        tabla += "<tr>";
-        headers.forEach((_, i) => tabla += `<td>${row[i] || ""}</td>`);
-        tabla += "</tr>";
-      });
-
-      tabla += "</table>";
-      resultadosDiv.innerHTML = tabla;
+    try {
+      const { rows, headers } = await cargarExcel();
+      const resultados = rows.filter(row =>
+        row.some(cell => String(cell ?? "").toLowerCase().includes(q))
+      );
+      container.innerHTML = renderTabla(headers, resultados);
+      counter.textContent = `Coincidencias: ${resultados.length}`;
+    } catch (err) {
+      container.innerHTML = `<p class='no-results'>${err.message}</p>`;
     }
-  </script>
+  }
+
+  function limpiar() {
+    document.getElementById("searchInput").value = "";
+    document.getElementById("resultados").innerHTML = "";
+    document.getElementById("counter").textContent = "";
+    document.getElementById("searchInput").focus();
+  }
+
+  document.getElementById("btnBuscar").addEventListener("click", buscar);
+  document.getElementById("btnLimpiar").addEventListener("click", limpiar);
+  document.getElementById("searchInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") buscar();
+    if (e.key === "Escape") limpiar();
+  });
+</script>
 </body>
 </html>
-
