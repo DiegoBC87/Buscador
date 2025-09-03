@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Buscar Placas y Teléfonos - Voltosas</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css">
+<style>
+  body { padding: 18px; }
+  .controls { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .results { margin-top:14px; }
+  table { width:100%; border-collapse: collapse; }
+  th, td { padding:8px; border:1px solid #ddd; text-align:left; }
+  #message { color:#a00; margin-top:8px; }
+  .small { font-size:0.9em; color:#444; }
+</style>
+</head>
+<body>
+  <h2>Buscar Placas y Teléfonos</h2>
+  <p class="small">Puedes pegar el enlace compartido de OneDrive/SharePoint <strong>o</strong> subir el archivo Excel desde tu dispositivo (fallback).</p>
+
+  <div class="controls">
+    <input id="urlInput" placeholder="Pega aquí el enlace compartido (opcional)" style="flex:1" />
+    <button id="btnLoadUrl">Cargar desde enlace</button>
+    <label style="margin-left:6px;">O subir archivo: <input id="fileInput" type="file" accept=".xlsx,.xls" /></label>
+  </div>
+
+  <div style="margin-top:12px;" class="controls">
+    <input id="txtTelefono" placeholder="Teléfono" style="width:200px" />
+    <input id="txtPlaca" placeholder="Placa" style="width:160px" />
+    <button id="btnBuscar">Buscar</button>
+    <button id="btnLimpiar">Limpiar</button>
+    <div id="lblCantidad" style="margin-left:10px;"></div>
+  </div>
+
+  <div id="message"></div>
+
+  <div class="results">
+    <table id="tblResultados" aria-live="polite">
+      <thead><tr><th>Placa</th><th>Teléfono</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+let data = [];
+const messageEl = document.getElementById('message');
+const tblBody = document.querySelector('#tblResultados tbody');
+
+function showMessage(txt, isError=true){
+  messageEl.textContent = txt;
+  messageEl.style.color = isError ? '#a00':'#060';
+}
+
+function clearMessage(){ messageEl.textContent = ''; }
+
+function renderRows(rows){
+  tblBody.innerHTML = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    const td1 = document.createElement('td'); td1.textContent = r.Placa || ''; tr.appendChild(td1);
+    const td2 = document.createElement('td'); td2.textContent = r.Telefono || ''; tr.appendChild(td2);
+    tblBody.appendChild(tr);
+  });
+  document.getElementById('lblCantidad').textContent = 'Coincidencias: ' + rows.length;
+}
+
+function normalizePhone(p){ return (p || '').toString().trim(); }
+
+document.getElementById('btnLoadUrl').addEventListener('click', async ()=>{
+  clearMessage();
+  const url = document.getElementById('urlInput').value.trim();
+  if(!url){ showMessage('Pega primero el enlace compartido de OneDrive/SharePoint (o usa subir archivo).'); return; }
+  showMessage('Cargando desde URL... (si tarda, espera)', false);
+  try{
+    // Intentar descargar el archivo. Muchos enlaces requieren ajustes o bloqueos CORS.
+    const res = await fetch(url);
+    if(!res.ok){ throw new Error('Respuesta fallida: ' + res.status); }
+    const ab = await res.arrayBuffer();
+    const wb = XLSX.read(ab, {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    data = XLSX.utils.sheet_to_json(ws);
+    renderRows(data);
+    showMessage('Carga completada desde URL.', false);
+  }catch(err){
+    showMessage('No fue posible cargar desde la URL. Causa: ' + err.message + '. Usa la opción de subir archivo (fallback).');
+    console.error(err);
+  }
+});
+
+document.getElementById('fileInput').addEventListener('change', (e)=>{
+  clearMessage();
+  const f = e.target.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const ab = ev.target.result;
+    try{
+      const wb = XLSX.read(ab, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      data = XLSX.utils.sheet_to_json(ws);
+      renderRows(data);
+      showMessage('Archivo cargado correctamente desde tu dispositivo.', false);
+    }catch(err){
+      showMessage('Error leyendo el archivo: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(f);
+});
+
+document.getElementById('btnBuscar').addEventListener('click', ()=>{
+  clearMessage();
+  const tel = normalizePhone(document.getElementById('txtTelefono').value);
+  const pla = (document.getElementById('txtPlaca').value || '').trim();
+  if(data.length === 0){ showMessage('No hay datos cargados. Carga el Excel por URL o sube el archivo.'); return; }
+  const filtered = data.filter(r => {
+    const rTel = normalizePhone(r.Telefono || r.telefono || r.Teléfono);
+    const rPla = (r.Placa || r.placa || r.PLACA || '').toString().trim();
+    const matchTel = !tel || rTel == tel;
+    const matchPla = !pla || rPla.toUpperCase() == pla.toUpperCase();
+    return matchTel && matchPla;
+  });
+  renderRows(filtered);
+});
+
+document.getElementById('btnLimpiar').addEventListener('click', ()=>{
+  document.getElementById('txtTelefono').value = '';
+  document.getElementById('txtPlaca').value = '';
+  if(data.length) renderRows(data);
+  clearMessage();
+});
+
+// Accessibility: render empty on load
+renderRows([]);
+</script>
+</body>
+</html>
