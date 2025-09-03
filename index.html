@@ -2,96 +2,122 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Búsqueda en Excel</title>
+  <title>Buscar Placas y Teléfonos</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+      display: flex;
+      justify-content: center;
+      padding: 40px;
+    }
+    .container {
+      background: #fff;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      width: 600px;
+    }
+    h2 {
+      margin-bottom: 20px;
+      text-align: center;
+      color: #4a148c;
+    }
+    input[type="text"] {
+      padding: 10px;
+      width: 70%;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    button {
+      padding: 10px 20px;
+      margin-left: 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      background: #8e24aa;
+      color: white;
+      font-weight: bold;
+    }
+    button:hover {
+      background: #6a1b9a;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: center;
+    }
+    th {
+      background: #8e24aa;
+      color: white;
+    }
+    .no-results {
+      margin-top: 20px;
+      color: red;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
-  <h2>Búsqueda en Excel</h2>
-
-  <!-- Input para cargar archivo local -->
-  <input type="file" id="inputFile" accept=".xlsx,.xls" />
-  <br><br>
-
-  <!-- Input para cargar desde URL (Google Drive / OneDrive) -->
-  <input type="text" id="inputURL" placeholder="Pega aquí la URL del Excel" style="width:400px;">
-  <button onclick="loadFromURL()">Cargar desde URL</button>
-
-  <br><br>
-  <input type="text" id="searchInput" placeholder="Buscar por placa o teléfono">
-  <button onclick="searchData()">Buscar</button>
-
-  <h3>Resultados:</h3>
-  <div id="result"></div>
+  <div class="container">
+    <h2>Buscar Placas y Teléfonos</h2>
+    <div style="text-align:center; margin-bottom:20px;">
+      <input type="text" id="searchInput" placeholder="Ingrese placa o teléfono">
+      <button onclick="buscar()">Buscar</button>
+    </div>
+    <div id="resultados"></div>
+  </div>
 
   <script>
-    let workbook;
+    const urlFija = "https://docs.google.com/spreadsheets/d/1tvoPrQ9n3uIsz003fkFEtJ8_ARl2o6ha/export?format=xlsx";
 
-    // Leer archivo cargado localmente
-    document.getElementById('inputFile').addEventListener('change', function (e) {
-      const reader = new FileReader();
-      reader.onload = function (e) {
-        const data = new Uint8Array(e.target.result);
-        workbook = XLSX.read(data, { type: 'array' });
-        alert("Archivo cargado correctamente desde PC");
-      };
-      reader.readAsArrayBuffer(e.target.files[0]);
-    });
-
-    // Transformar URL de Google Drive a descarga directa
-    function transformGoogleDriveURL(url) {
-      const match = url.match(/[-\w]{25,}/);
-      return match ? `https://drive.google.com/uc?export=download&id=${match[0]}` : url;
+    async function cargarExcel() {
+      const response = await fetch(urlFija);
+      const data = await response.arrayBuffer();
+      const workbook = XLSX.read(data, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      return XLSX.utils.sheet_to_json(sheet, { header: 1 });
     }
 
-    // Cargar archivo desde URL
-    async function loadFromURL() {
-      let url = document.getElementById('inputURL').value.trim();
-      if (!url) return alert("Por favor pega una URL válida");
+    async function buscar() {
+      const query = document.getElementById("searchInput").value.trim();
+      const resultadosDiv = document.getElementById("resultados");
+      resultadosDiv.innerHTML = "";
 
-      // Si es Google Drive, transformarla
-      if (url.includes("drive.google.com")) {
-        url = transformGoogleDriveURL(url);
-      }
-
-      try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error("No se pudo descargar el archivo");
-
-        const arrayBuffer = await response.arrayBuffer();
-        workbook = XLSX.read(arrayBuffer, { type: 'array' });
-        alert("Archivo cargado correctamente desde URL");
-      } catch (error) {
-        alert("Error cargando archivo: " + error.message);
-      }
-    }
-
-    // Buscar datos dentro del Excel cargado
-    function searchData() {
-      if (!workbook) {
-        alert("Primero carga un archivo (local o URL)");
+      if (!query) {
+        resultadosDiv.innerHTML = "<p class='no-results'>Ingrese un valor para buscar</p>";
         return;
       }
 
-      const searchValue = document.getElementById('searchInput').value.trim();
-      if (!searchValue) return alert("Escribe algo para buscar");
+      const data = await cargarExcel();
+      const headers = data[0];
+      const rows = data.slice(1);
 
-      let resultHTML = "";
+      const coincidencias = rows.filter(row => row.some(cell => String(cell).includes(query)));
 
-      workbook.SheetNames.forEach(sheetName => {
-        const sheet = workbook.Sheets[sheetName];
-        const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      if (coincidencias.length === 0) {
+        resultadosDiv.innerHTML = "<p class='no-results'>No se encontraron coincidencias</p>";
+        return;
+      }
 
-        json.forEach((row, rowIndex) => {
-          row.forEach((cell) => {
-            if (cell && cell.toString().includes(searchValue)) {
-              resultHTML += `<p><b>Hoja:</b> ${sheetName} | <b>Fila:</b> ${rowIndex + 1} → ${row.join(" | ")}</p>`;
-            }
-          });
-        });
+      let tabla = "<table><tr>";
+      headers.forEach(h => tabla += `<th>${h}</th>`);
+      tabla += "</tr>";
+
+      coincidencias.forEach(row => {
+        tabla += "<tr>";
+        headers.forEach((_, i) => tabla += `<td>${row[i] || ""}</td>`);
+        tabla += "</tr>";
       });
 
-      document.getElementById('result').innerHTML = resultHTML || "No se encontraron coincidencias.";
+      tabla += "</table>";
+      resultadosDiv.innerHTML = tabla;
     }
   </script>
 </body>
